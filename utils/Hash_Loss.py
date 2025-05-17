@@ -6,12 +6,20 @@ import torch.nn.functional as F
 class HashNetLoss(nn.Module):
     def __init__(self, config, bit):
         super(HashNetLoss, self).__init__()
-        self.U = torch.zeros(config["num_train"], bit).to(config["device"])
-        self.Y = torch.zeros(config["num_train"], config["n_class"]).to(config["device"])
+        self.U = torch.zeros(config["num_train"], bit, dtype=torch.float16).to(config["device"])
+        self.Y = torch.zeros(config["num_train"], config["n_class"], dtype=torch.float16).to(config["device"])
         self.bit = bit
+        self.config = config
         # self.gammar = 1
 
     def forward(self, u, y, ind, config):
+        # Đảm bảo u có kích thước đúng với bit hiện tại
+        if u.size(1) != self.bit:
+            u = u[:, :self.bit]  # Lấy self.bit cột đầu tiên
+            
+        # Chuyển đổi y thành float16
+        y = y.to(torch.float16)
+        
         self.U[ind, :] = u.data
         self.Y[ind, :] = y.data
 

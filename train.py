@@ -44,8 +44,8 @@ def get_config():
         "epoch": 15,
         "test_map": 3,
         "save_path": "save/HybridHash",
-        # "device": torch.device("cuda:0"), 
-        "device": torch.device("mps" if torch.backends.mps.is_available() else "cpu"),
+        "device": torch.device("cuda:0"), 
+        # "device": torch.device("mps" if torch.backends.mps.is_available() else "cpu"),
         "bit_list": [16, 32, 48, 64],
         "pretrained_dir":"checkpoint/jx_nest_base-8bc41011.pth",
         "img_size": 224,
@@ -70,11 +70,14 @@ def train_val(config, bit):
     net = HybridHash(config, num_levels=3, embed_dims=(128, 256, 512), num_heads=(4, 8, 16), depths=(2, 2, 15))
     if config["pretrained_dir"] is not None:
         logger.info('Loading:', config["pretrained_dir"])
-        state_dict = torch.load(config["pretrained_dir"])
+        state_dict = torch.load(config["pretrained_dir"], map_location=device)
         net.load_state_dict(state_dict, strict=False)
         logger.info('Pretrain weights loaded.')
 
-    net.to(config["device"])
+    # Thêm các tối ưu hóa cho GPU
+    torch.backends.cudnn.benchmark = True  # Tối ưu hóa cuDNN
+    # net = torch.nn.DataParallel(net)  # Sử dụng DataParallel nếu có nhiều GPU
+    net.to(device)
 
     # 计算模型计算力和参数量（Statistical model calculation and number of parameters）
     flops, num_params = get_model_complexity_info(net,(3,224,224), as_strings=True, print_per_layer_stat=False)
@@ -107,13 +110,12 @@ def train_val(config, bit):
 
         train_loss = 0
         for image, label, ind in train_loader:
-
-            image = image.to(device)
-            label = label.to(device)
+            image = image.to(device, non_blocking=True)  # Thêm non_blocking=True
+            label = label.to(device, non_blocking=True)  # Thêm non_blocking=True
 
             optimizer.zero_grad()
 
-            with autocast(device_type='mps', dtype=torch.float32):
+            with autocast(device_type='cuda', dtype=torch.float16):
                 u = net(image)
                 loss = criterion(u, label.float(), ind, config)
 
